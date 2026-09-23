@@ -1,7 +1,7 @@
 # ChildStream 安全性強化 設計書
 
 作成日: 2026-09-22
-状態: ユーザーレビュー待ち
+状態: コード実装済み・Windows CIおよび実機確認待ち
 対象ブランチ: codex/childstream-safety-hardening
 基準コミット: d41693eb27691516e96df42a05396f1dfe3bd17c
 

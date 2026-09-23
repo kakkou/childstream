@@ -1,84 +1,147 @@
 # ChildStream
 
-**Stream games from a second Windows desktop while you keep using your PC — free, open, no license unlocks.**
+ChildStreamは、WindowsのChild SessionでゲームとSunshineを動かし、物理コンソールを使い続けながらMoonlightクライアントへ配信する実験的なランチャーです。
 
-ChildStream is a proof of concept that replicates the core idea of multiseat streaming tools (like [Duo](https://github.com/DuoStream/Duo)) using only documented Windows features:
+WindowsのChild Sessions API（`WTSEnableChildSessions`、`WTSGetChildSessionId`）とRDP ActiveXの`ConnectToChildSession`を使用します。通常のRDPセッションや物理コンソールをChild Sessionとして推測する処理は行いません。
 
-- A **child session** — a second, fully independent Windows logon session created via the Win32 `WTSEnableChildSessions` API and the RDP ActiveX control's `ConnectToChildSession` property
-- A portable **[Sunshine](https://github.com/LizardByte/Sunshine)** instance running *inside* that session on its own ports
-- Any **Moonlight** client (Artemis on Android works great) connecting to it
+## 必要環境
 
-Result: your phone/tablet/TV streams a game from the second desktop at up to ~120 fps, while the physical desktop stays fully usable at its native refresh rate (verified 143 Hz on the host while streaming 2800×1272 @ 120 fps).
+- Windows 10／11 Pro（Windows 11 Pro 25H2で開発）
+- NVENC／AMF／QSVなどのハードウェアエンコーダーを備えたGPU
+- .NET Framework 4.x
+- パスワードでサインインできるWindowsアカウント
+- セットアップ時の管理者権限
 
-```
-┌────────────────────────── Your PC ──────────────────────────┐
-│  Console session (you)          Child session (streaming)   │
-│  ├─ your apps, 144 Hz           ├─ games                    │
-│  └─ physical monitors           ├─ Sunshine (port 48989)    │
-│                                 └─ RDP display @ ~120 fps   │
-│  ChildStream.exe ── RDP loopback viewer ──> child session   │
-└─────────────────────────────────────────────────────────────┘
-                                  │
-                        Moonlight / Artemis client
-```
-
-## Requirements
-
-- Windows 10/11 **Pro** (tested on Windows 11 Pro 25H2)
-- A GPU with a hardware encoder (NVENC / AMF / QSV)
-- .NET Framework 4.x (preinstalled on Windows)
-- A password-capable Windows account (child session logon uses `MACHINE\user` + password; if you use a Microsoft account with Windows Hello only, allow password sign-in)
+Windows Helloだけを使用しているMicrosoftアカウントでは、Child Sessionへのログオン用にパスワードサインインを許可してください。
 
 ## Setup
 
+管理者として開いたWindows PowerShell 5.1で、リポジトリのルートから実行します。
+
 ```powershell
-# from an elevated PowerShell in the repo root
+Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\setup.ps1
 ```
 
-The script:
-1. Compiles `ChildStream.exe` from source (csc, no build tools needed)
-2. Enables child sessions (`WTSEnableChildSessions`)
-3. Allows RDP connections (child sessions are loopback RDP)
-4. Raises the session compositor rate (`DWMFRAMEINTERVAL = 8` → ~120 fps)
-5. Downloads portable Sunshine and configures it on base port **48989** (coexists with an existing host like Apollo/Vibepollo on 47989)
-6. Adds a firewall rule + startup hook that auto-starts Sunshine **only inside child sessions**
-7. Creates a desktop shortcut
+既定の`HighestTask`モードは、現在のユーザーに対する対話型ログオントリガーと「最上位の特権」でタスクを登録します。Child Session内で正しくタスクが起動する環境では、ログオンごとのUAC操作を避けられます。
 
-Then:
-1. Launch **Child Session** from the desktop
-2. Enter your Windows password once (stored DPAPI-encrypted, machine-local)
-3. Set Sunshine web UI credentials: `Sunshine\Sunshine\sunshine.exe --creds <user> <pass>`
-4. Pair Moonlight/Artemis with `<host-ip>:48989` (PIN via `https://<host-ip>:48990`)
-5. Play
+```powershell
+.\scripts\setup.ps1 -AutostartMode HighestTask
+```
 
-## Usage notes
+最高権限タスクがChild Session内に配置されない環境では、UACを許容する`PromptedStartup`へ切り替えて再セットアップします。
 
-- **Keep ChildStream running while streaming** — minimize it to the tray. The child session's display exists only while the viewer is attached; closing the app breaks capture until you reconnect (it auto-reconnects on relaunch).
-- The session itself survives viewer disconnects — games keep running.
-- To fully end the session: sign out from inside it.
-- If your Microsoft account password is rejected, log on as `MACHINE\username` (the launcher does this automatically).
+```powershell
+.\scripts\setup.ps1 -AutostartMode PromptedStartup
+```
 
-## Limitations (vs. commercial tools)
+既存のSunshineディレクトリが固定配布物と一致しない場合、セットアップは上書きせず停止します。内容を確認したうえで置換する場合だけ、次を明示してください。既存配置は`%ProgramData%\ChildStream\Backups`以下へ退避してから置換されます。
 
-- One child session max (Windows limitation), same user as the console session
-- Refresh limited by the RDP compositor (~60–125 fps depending on build; `DWMFRAMEINTERVAL` tweak required)
-- No per-session HDR
-- A viewer connection must stay attached (commercial tools ship a custom indirect display driver to avoid this)
+```powershell
+.\scripts\setup.ps1 -ReplaceExistingSunshine
+```
 
-## Uninstall
+セットアップは次の処理を行います。
 
-- Delete the repo folder, the desktop shortcut, and `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\childstream-sunshine.cmd`
-- Remove the firewall rule `ChildStream Sunshine`
-- Optional: remove `DWMFRAMEINTERVAL`, set `fDenyTSConnections = 1`, and disable child sessions
+1. `src`のC#ソースから`ChildStream.exe`をコンパイルする
+2. Child Sessions、RDP、DWM設定などの変更前状態を記録する
+3. Sunshineの固定配布物をダウンロードし、展開前にSHA-256を検証する
+4. Child SessionだけでSunshineを起動する自動起動設定を登録する
+5. Private／LocalSubnet限定のFirewall受信規則を登録する
+6. デスクトップショートカットを作成する
+
+Sunshineは次の配布物に固定されています。
+
+- バージョン: `v2026.914.233613`
+- ファイル: `Sunshine-Windows-AMD64-lite.zip`
+- SHA-256: `233008e46f4c0e501a586cbfd6c4fd4a4c0d414a0b5fc7f13c070eb92ec3824b`
+
+ハッシュが一致しない場合は展開もシステム変更も行いません。
+
+セットアップ後、SunshineのWeb UI資格情報を設定し、Moonlight／ArtemisをChildStream用ポートへペアリングしてください。
+
+```powershell
+.\Sunshine\Sunshine\sunshine.exe --creds <ユーザー名> <パスワード>
+```
+
+## display.cfg
+
+リポジトリのルートに`display.cfg`を置くと、Child Sessionの解像度とスケールを指定できます。
+
+```text
+WIDTHxHEIGHT
+WIDTHxHEIGHTxSCALE
+```
+
+例:
+
+```text
+2800x1272x225
+```
+
+区切り文字は`x`または`X`です。許容範囲は次のとおりです。
+
+- 幅: 640～8192
+- 高さ: 480～8192
+- スケール: 指定する場合は100～500
+
+ファイルがない場合は1920×1080、スケール指定なしを使用します。余分な項目、符号、小数、範囲外、整数オーバーフローなどの不正な値がある場合は、パスワード入力やRDP接続を開始せず安全に停止します。
+
+## Security
+
+- Child Session IDは`WTSGetChildSessionId`で取得し、通常のRDPやユーザー名検索から推測しません。
+- 「End session」は、操作直前に取得したChild Session IDだけを`WTSLogoffSession`へ渡します。取得に失敗した場合、別セッションを列挙してログオフするフォールバックはありません。
+- コンソール側は短時間だけ有効な起動許可を`%LOCALAPPDATA%\ChildStream\active-child-session.json`へ発行します。パスワードやDPAPIデータは保存しません。
+- Child Session側はSession ID、有効期限、ランチャーのプロセスIDと起動時刻を再検証し、不一致ならSunshineを起動しません。
+- Firewall規則は受信方向、Privateプロファイル、`RemoteAddress=LocalSubnet`に限定されます。Publicネットワークやインターネット全体には公開しません。
+- 初回セットアップ前の状態は`%ProgramData%\ChildStream\install-state.json`へ保存し、変更の進行状況は同じディレクトリの`install-journal.json`へ記録します。最初の正常なスナップショットは再セットアップで上書きしません。
+
+## 使用上の注意
+
+- 配信中はChildStreamを終了せず、最小化してトレイへ格納してください。
+- ビューアーを切断してもChild Session自体は維持されますが、表示が接続されていない間はキャプチャできません。
+- Child Sessionを終了する場合は、トレイメニューの「End session」またはChild Session内のサインアウトを使用します。
+- 対応するChild Sessionは1つです。
+- RDPコンポジターによるリフレッシュレート上限があり、セッション単位のHDRには対応していません。
+
+## Uninstall／rollback
+
+手動でレジストリ、Firewall、タスク、Startupファイルを削除しないでください。管理者として開いたWindows PowerShell 5.1から、最初に`-WhatIf`で復元内容を確認します。
+
+```powershell
+.\scripts\uninstall.ps1 -WhatIf
+.\scripts\uninstall.ps1
+```
+
+`uninstall.ps1`は`install-state.json`と`install-journal.json`を検証し、記録された変更だけを逆順に復元します。状態ファイルがない、壊れている、または不整合な場合は、推測による変更を行わず停止します。
+
+復元時に現行のSunshineや状態ファイルを取り除く必要がある場合も削除せず、`%ProgramData%\ChildStream\Backups\<日時>`へ移動します。アンインストール後に問題がある場合は、画面に表示されたバックアップ先を確認し、必要なファイルを元の場所へ戻してください。既存Sunshineを置換した場合は、同じバックアップ領域に置換前のディレクトリが保存されます。
+
+セットアップ途中でエラーになった場合も、永続ジャーナルに基づいて今回適用した変更だけをロールバックします。
+
+## Manual verification
+
+現在、コード実装とWindows CI定義は追加済みですが、Windows実機での動作確認は未完了です。導入先の実機で次を確認してください。
+
+1. 物理コンソールへログオンしても、ChildStream用Sunshineが自動起動しない。
+2. mstscなどによる通常のRDPログオンでも、ChildStream用Sunshineが自動起動しない。
+3. ChildStreamからChild Sessionを作成した場合だけ、Sunshineが同じSession IDで起動する。
+4. 「End session」で対象のChild Sessionだけがログオフされ、コンソールと通常RDPが維持される。
+5. `Get-NetFirewallRule`と`Get-NetFirewallAddressFilter`で、ChildStream規則がPrivate／LocalSubnet限定である。
+6. 不正な`display.cfg`でメッセージが表示され、パスワード入力やRDP接続が行われない。
+7. `HighestTask`でログオン時のUACなしにSunshineがChild Session内へ配置される。
+8. WGCキャプチャ、NVENC／AMF／QSV、Moonlightペアリング、昇格アプリへの入力が実機で機能する。
+9. `uninstall.ps1 -WhatIf`の内容を確認後にアンインストールし、変更前の設定へ戻る。
+
+項目7を満たさない場合は、`PromptedStartup`モードへ切り替えてください。この場合はChild Sessionログオン時に1回のUAC操作が必要ですが、起動許可の検証は維持されます。
 
 ## Credits
 
-- [DuoStream/Duo](https://github.com/DuoStream/Duo) for proving the concept
-- [LizardByte/Sunshine](https://github.com/LizardByte/Sunshine) for the streaming host
-- [Artemis / moonlight-android](https://github.com/ClassicOldSong/moonlight-android) as the client
-- Microsoft's documented [Child Sessions](https://learn.microsoft.com/en-us/windows/win32/termserv/child-sessions) API
+- [DuoStream/Duo](https://github.com/DuoStream/Duo) — Child Sessionによる配信方式の先行実装
+- [LizardByte/Sunshine](https://github.com/LizardByte/Sunshine) — 配信ホスト
+- [Artemis / moonlight-android](https://github.com/ClassicOldSong/moonlight-android) — クライアント
+- [Microsoft Child Sessions API](https://learn.microsoft.com/windows/win32/termserv/child-sessions)
 
 ## Disclaimer
 
-Proof of concept, provided as-is. Built collaboratively with GitHub Copilot CLI in an afternoon. Use at your own risk.
+本ソフトウェアは実験的なProof of Conceptです。保証はありません。変更前状態の記録と`-WhatIf`を確認し、復元可能なバックアップを用意したうえで使用してください。
