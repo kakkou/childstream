@@ -366,8 +366,7 @@ Describe 'Invoke-ChildSessionSunshine' {
                 }
                 return [pscustomobject]@{ SessionId = 42 }
             }
-            if ($ErrorAction -eq 'Stop') { throw 'process enumeration failed' }
-            return @()
+            throw 'process enumeration failed'
         }
 
         Invoke-ChildSessionSunshine -Root $script:root -LaunchMode HighestTask -WaitSeconds 0

@@ -40,9 +40,15 @@ Describe 'Firewall' {
 
 Describe '自動起動' {
     It 'HighestTaskはInteractiveかつHighestで対象ユーザーへ登録する' {
-        Mock New-ScheduledTaskAction { 'action' }
-        Mock New-ScheduledTaskTrigger { 'trigger' }
-        Mock New-ScheduledTaskPrincipal { 'principal' }
+        Mock New-ScheduledTaskAction {
+            [pscustomobject]@{ PSTypeName='Microsoft.Management.Infrastructure.CimInstance#MSFT_TaskAction' }
+        }
+        Mock New-ScheduledTaskTrigger {
+            [pscustomobject]@{ PSTypeName='Microsoft.Management.Infrastructure.CimInstance#MSFT_TaskTrigger' }
+        }
+        Mock New-ScheduledTaskPrincipal {
+            [pscustomobject]@{ PSTypeName='Microsoft.Management.Infrastructure.CimInstance#MSFT_TaskPrincipal2' }
+        }
         Mock Register-ScheduledTask {}
         Set-ChildStreamScheduledTask -Root 'C:\ChildStream' -UserName 'HOST\user'
         Should -Invoke New-ScheduledTaskPrincipal -Times 1 -ParameterFilter { $LogonType -eq 'Interactive' -and $RunLevel -eq 'Highest' -and $UserId -eq 'HOST\user' }

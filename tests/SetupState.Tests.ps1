@@ -31,7 +31,7 @@ Describe 'インストールジャーナル' {
     }
 
     It '同じ変更のFirewall名を増分かつ重複なしで記録する' {
-        $path = Join-Path $TestDrive 'install-journal.json'
+        $path = Join-Path $TestDrive 'incremental-install-journal.json'
         Save-ChildStreamInstallJournalOnce -Path $path
         Start-ChildStreamChange -Path $path -Change 'firewall' -CreatedFirewallRuleNames @('rule-a')
         Start-ChildStreamChange -Path $path -Change 'firewall' -CreatedFirewallRuleNames @('rule-b', 'rule-a')
@@ -42,7 +42,7 @@ Describe 'インストールジャーナル' {
     }
 
     It '壊れたジャーナルを拒否する' {
-        $path = Join-Path $TestDrive 'install-journal.json'
+        $path = Join-Path $TestDrive 'broken-install-journal.json'
         Set-Content -LiteralPath $path -Value '{broken' -Encoding UTF8
         { Read-ChildStreamInstallJournal -Path $path } | Should -Throw
     }
@@ -50,39 +50,39 @@ Describe 'インストールジャーナル' {
 
 Describe 'Restore-RegistryValueSnapshot' {
     It '元々存在しない値を削除し不存在を確認する' {
-        Mock Remove-ItemProperty {}
-        Mock Get-ItemProperty { throw [Management.Automation.ItemNotFoundException]::new('missing') }
+        Mock Remove-ItemProperty -ModuleName ChildStream.Setup {}
+        Mock Get-ItemProperty -ModuleName ChildStream.Setup { throw [Management.Automation.ItemNotFoundException]::new('missing') }
         Restore-RegistryValueSnapshot -Snapshot ([pscustomobject]@{ Path='HKCU:\Software\ChildStreamTest'; Name='Value'; Existed=$false })
-        Should -Invoke Remove-ItemProperty -Times 1 -ParameterFilter { $Name -eq 'Value' }
+        Should -Invoke Remove-ItemProperty -ModuleName ChildStream.Setup -Times 1 -ParameterFilter { $Name -eq 'Value' }
     }
 
     It '削除後も値が残る場合は失敗する' {
-        Mock Remove-ItemProperty {}
-        Mock Get-ItemProperty { [pscustomobject]@{ Value = 1 } }
+        Mock Remove-ItemProperty -ModuleName ChildStream.Setup {}
+        Mock Get-ItemProperty -ModuleName ChildStream.Setup { [pscustomobject]@{ Value = 1 } }
         { Restore-RegistryValueSnapshot -Snapshot ([pscustomobject]@{ Path='HKCU:\Software\ChildStreamTest'; Name='Value'; Existed=$false }) } | Should -Throw
     }
 
     It '存在したDWORDを元の型で復元する' {
-        Mock Set-ItemProperty {}
+        Mock Set-ItemProperty -ModuleName ChildStream.Setup {}
         Restore-RegistryValueSnapshot -Snapshot ([pscustomobject]@{ Path='HKCU:\Software\ChildStreamTest'; Name='Value'; Existed=$true; Value=2; Kind='DWord' })
-        Should -Invoke Set-ItemProperty -Times 1 -ParameterFilter { $Type -eq 'DWord' -and $Value -eq 2 }
+        Should -Invoke Set-ItemProperty -ModuleName ChildStream.Setup -Times 1 -ParameterFilter { $Type -eq 'DWord' -and $Value -eq 2 }
     }
 }
 
 Describe 'Firewallスナップショット' {
     It '同名の複数ルールとポートフィルターを配列で保存する' {
-        Mock Get-NetFirewallRule {
+        Mock Get-NetFirewallRule -ModuleName ChildStream.Setup {
             @(
                 [pscustomobject]@{ Name='rule-1'; DisplayName='ChildStream Sunshine'; Enabled='True'; Direction='Inbound'; Action='Allow'; Profile='Private'; EdgeTraversalPolicy='Block'; Description=''; Group='' },
                 [pscustomobject]@{ Name='rule-2'; DisplayName='ChildStream Sunshine'; Enabled='False'; Direction='Outbound'; Action='Block'; Profile='Private'; EdgeTraversalPolicy='Block'; Description=''; Group='' }
             )
         }
-        Mock Get-NetFirewallApplicationFilter { [pscustomobject]@{ Program='C:\Sunshine\sunshine.exe'; Package=$null } }
-        Mock Get-NetFirewallAddressFilter { [pscustomobject]@{ LocalAddress='Any'; RemoteAddress='LocalSubnet' } }
-        Mock Get-NetFirewallPortFilter { [pscustomobject]@{ Protocol='TCP'; LocalPort='47989'; RemotePort='Any'; IcmpType='Any'; DynamicTarget='Any' } }
-        Mock Get-NetFirewallServiceFilter { [pscustomobject]@{ Service='Any' } }
-        Mock Get-NetFirewallInterfaceFilter { [pscustomobject]@{ InterfaceAlias='Any'; InterfaceType='Any' } }
-        Mock Get-NetFirewallSecurityFilter { [pscustomobject]@{ Authentication='NotRequired'; Encryption='NotRequired'; OverrideBlockRules='False'; LocalUser='Any'; RemoteUser='Any'; RemoteMachine='Any' } }
+        Mock Get-NetFirewallApplicationFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Program='C:\Sunshine\sunshine.exe'; Package=$null } }
+        Mock Get-NetFirewallAddressFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ LocalAddress='Any'; RemoteAddress='LocalSubnet' } }
+        Mock Get-NetFirewallPortFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Protocol='TCP'; LocalPort='47989'; RemotePort='Any'; IcmpType='Any'; DynamicTarget='Any' } }
+        Mock Get-NetFirewallServiceFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Service='Any' } }
+        Mock Get-NetFirewallInterfaceFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ InterfaceAlias='Any'; InterfaceType='Any' } }
+        Mock Get-NetFirewallSecurityFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Authentication='NotRequired'; Encryption='NotRequired'; OverrideBlockRules='False'; LocalUser='Any'; RemoteUser='Any'; RemoteMachine='Any' } }
 
         $snapshot = Get-FirewallRuleSnapshot -DisplayName 'ChildStream Sunshine'
 
@@ -93,26 +93,27 @@ Describe 'Firewallスナップショット' {
     }
 
     It '復元不能な高度設定を取得時点で拒否する' {
-        Mock Get-NetFirewallRule { [pscustomobject]@{ Name='rule-1'; DisplayName='ChildStream Sunshine'; Enabled='True'; Direction='Inbound'; Action='Allow'; Profile='Private'; EdgeTraversalPolicy='Block'; Description='unsupported'; Group='' } }
-        Mock Get-NetFirewallApplicationFilter { [pscustomobject]@{ Program='Any'; Package=$null } }
-        Mock Get-NetFirewallAddressFilter { [pscustomobject]@{ LocalAddress='Any'; RemoteAddress='Any' } }
-        Mock Get-NetFirewallPortFilter { [pscustomobject]@{ Protocol='Any'; LocalPort='Any'; RemotePort='Any'; IcmpType='Any'; DynamicTarget='Any' } }
-        Mock Get-NetFirewallServiceFilter { [pscustomobject]@{ Service='Any' } }
-        Mock Get-NetFirewallInterfaceFilter { [pscustomobject]@{ InterfaceAlias='Any'; InterfaceType='Any' } }
-        Mock Get-NetFirewallSecurityFilter { [pscustomobject]@{ Authentication='NotRequired'; Encryption='NotRequired'; OverrideBlockRules='False'; LocalUser='Any'; RemoteUser='Any'; RemoteMachine='Any' } }
+        Mock Get-NetFirewallRule -ModuleName ChildStream.Setup { [pscustomobject]@{ Name='rule-1'; DisplayName='ChildStream Sunshine'; Enabled='True'; Direction='Inbound'; Action='Allow'; Profile='Private'; EdgeTraversalPolicy='Block'; Description='unsupported'; Group='' } }
+        Mock Get-NetFirewallApplicationFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Program='Any'; Package=$null } }
+        Mock Get-NetFirewallAddressFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ LocalAddress='Any'; RemoteAddress='Any' } }
+        Mock Get-NetFirewallPortFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Protocol='Any'; LocalPort='Any'; RemotePort='Any'; IcmpType='Any'; DynamicTarget='Any' } }
+        Mock Get-NetFirewallServiceFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Service='Any' } }
+        Mock Get-NetFirewallInterfaceFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ InterfaceAlias='Any'; InterfaceType='Any' } }
+        Mock Get-NetFirewallSecurityFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Authentication='NotRequired'; Encryption='NotRequired'; OverrideBlockRules='False'; LocalUser='Any'; RemoteUser='Any'; RemoteMachine='Any' } }
         { Get-FirewallRuleSnapshot -DisplayName 'ChildStream Sunshine' } | Should -Throw
     }
 
     It 'Outbound復元ではEdgeTraversalPolicyを渡さない' {
-        Mock Get-NetFirewallRule { @() }
-        Mock New-NetFirewallRule {}
+        Mock Get-NetFirewallRule -ModuleName ChildStream.Setup { @() }
+        Mock New-NetFirewallRule -ModuleName ChildStream.Setup {}
         $snapshot = @([pscustomobject]@{
             Name='rule-out'; DisplayName='ChildStream Sunshine'; Enabled='True'; Direction='Outbound'; Action='Block'; Profile='Private';
             Program='Any'; LocalAddress='Any'; RemoteAddress='LocalSubnet'; Protocol='TCP'; LocalPort='Any'; RemotePort='Any';
-            IcmpType='Any'; Service='Any'; InterfaceAlias='Any'; InterfaceType='Any'; EdgeTraversalPolicy='Block'
+            IcmpType='Any'; Service='Any'; InterfaceAlias='Any'; InterfaceType='Any'; EdgeTraversalPolicy='Block';
+            Description=''; Group=''; Package=$null; DynamicTarget='Any'
         })
         Restore-FirewallRuleSnapshot -Snapshot $snapshot -CreatedRuleNames @()
-        Should -Invoke New-NetFirewallRule -Times 1 -ParameterFilter { $Direction -eq 'Outbound' -and $null -eq $EdgeTraversalPolicy }
+        Should -Invoke New-NetFirewallRule -ModuleName ChildStream.Setup -Times 1 -ParameterFilter { $Direction -eq 'Outbound' -and $null -eq $EdgeTraversalPolicy }
     }
 }
 
@@ -142,24 +143,24 @@ Describe 'Restore-DirectoryResource' {
 
 Describe 'Restore-ChildSessionEnabledState' {
     It '無効状態へ戻した後check終了コード1を確認する' {
-        Mock Start-Process {
+        Mock Start-Process -ModuleName ChildStream.Setup {
             if ($ArgumentList -contains '-disable') { return [pscustomobject]@{ ExitCode = 0 } }
             return [pscustomobject]@{ ExitCode = 1 }
         }
         Restore-ChildSessionEnabledState -Enabled $false -LauncherPath 'C:\ChildStream.exe'
-        Should -Invoke Start-Process -Times 2
+        Should -Invoke Start-Process -ModuleName ChildStream.Setup -Times 2
     }
 }
 
 Describe 'Restore-ChildStreamState' {
     It 'pendingを含む記録済み変更だけを逆順に復元する' {
-        $journalPath = Join-Path $TestDrive 'install-journal.json'
+        $journalPath = Join-Path $TestDrive 'restore-install-journal.json'
         Save-ChildStreamInstallJournalOnce -Path $journalPath
         Start-ChildStreamChange -Path $journalPath -Change 'registry:fDenyTSConnections'
         Complete-ChildStreamChange -Path $journalPath -Change 'registry:fDenyTSConnections'
         Start-ChildStreamChange -Path $journalPath -Change 'firewall' -CreatedFirewallRuleNames @('rule-a')
-        Mock Restore-RegistryValueSnapshot {}
-        Mock Restore-FirewallRuleSnapshot {}
+        Mock Restore-RegistryValueSnapshot -ModuleName ChildStream.Setup {}
+        Mock Restore-FirewallRuleSnapshot -ModuleName ChildStream.Setup {}
         $state = [pscustomobject]@{
             registry = @([pscustomobject]@{ Path='HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'; Name='fDenyTSConnections'; Existed=$true; Value=1; Kind='DWord' })
             firewall = @()
@@ -167,7 +168,7 @@ Describe 'Restore-ChildStreamState' {
 
         Restore-ChildStreamState -State $state -JournalPath $journalPath
 
-        Should -Invoke Restore-FirewallRuleSnapshot -Times 1 -ParameterFilter { $CreatedRuleNames -contains 'rule-a' }
-        Should -Invoke Restore-RegistryValueSnapshot -Times 1
+        Should -Invoke Restore-FirewallRuleSnapshot -ModuleName ChildStream.Setup -Times 1 -ParameterFilter { $CreatedRuleNames -contains 'rule-a' }
+        Should -Invoke Restore-RegistryValueSnapshot -ModuleName ChildStream.Setup -Times 1
     }
 }
