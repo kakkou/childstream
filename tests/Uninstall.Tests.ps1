@@ -46,6 +46,20 @@ Describe 'Invoke-ChildStreamUninstall' {
         Should -Invoke Restore-ChildStreamState -Times 0
     }
 
+    It '復元資源の必須項目が欠けた状態では変更しない' {
+        Mock Move-Item {}
+        Mock Copy-Item {}
+        Mock Restore-ChildStreamState {}
+        $script:state.sunshine = [pscustomobject]@{ Existed=$false; BackupPath='backup' }
+        $script:state | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $script:statePath -Encoding UTF8
+
+        { Invoke-ChildStreamUninstall -StatePath $script:statePath -Confirm:$false } | Should -Throw
+
+        Should -Invoke Move-Item -Times 0
+        Should -Invoke Copy-Item -Times 0
+        Should -Invoke Restore-ChildStreamState -Times 0
+    }
+
     It 'Sunshineデータを削除せずバックアップへ移動する' {
         $sunshine = $script:state.sunshine.Path
         New-Item -ItemType Directory -Path $sunshine -Force | Out-Null

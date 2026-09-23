@@ -139,6 +139,18 @@ Describe 'Restore-DirectoryResource' {
         Test-Path (Join-Path $path 'old.txt') | Should -BeTrue
         Test-Path $backup | Should -BeFalse
     }
+
+    It '既存ディレクトリのバックアップ欠落時は現行データを削除しない' {
+        $path = Join-Path $TestDrive 'Current-Sunshine'
+        $backup = Join-Path $TestDrive 'Missing-Sunshine.backup'
+        New-Item -ItemType Directory -Path $path -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $path 'current.txt') -Value 'current'
+
+        { Restore-DirectoryResource -Snapshot ([pscustomobject]@{ Path=$path; BackupPath=$backup; Existed=$true }) } |
+            Should -Throw
+
+        Test-Path (Join-Path $path 'current.txt') | Should -BeTrue
+    }
 }
 
 Describe 'Restore-ChildSessionEnabledState' {

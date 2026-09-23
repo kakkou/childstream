@@ -281,9 +281,11 @@ function Restore-FileResource {
 function Restore-DirectoryResource {
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Snapshot)
-    if (Test-Path -LiteralPath $Snapshot.Path) { Remove-Item -LiteralPath $Snapshot.Path -Recurse -Force -ErrorAction Stop }
     if ([bool]$Snapshot.Existed) {
         if (-not (Test-Path -LiteralPath $Snapshot.BackupPath -PathType Container)) { throw "ディレクトリバックアップがありません: $($Snapshot.BackupPath)" }
+    }
+    if (Test-Path -LiteralPath $Snapshot.Path) { Remove-Item -LiteralPath $Snapshot.Path -Recurse -Force -ErrorAction Stop }
+    if ([bool]$Snapshot.Existed) {
         Move-Item -LiteralPath $Snapshot.BackupPath -Destination $Snapshot.Path -ErrorAction Stop
     }
 }

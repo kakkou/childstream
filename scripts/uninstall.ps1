@@ -22,6 +22,64 @@ function Read-ValidatedChildStreamInstallState {
     return $state
 }
 
+function Assert-ChildStreamUninstallPreconditions {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$State, [Parameter(Mandatory)]$Journal)
+
+    if ($State.childSessionsEnabled -isnot [bool]) { throw 'Child Sessionsの保存状態が不正です。' }
+    foreach ($registry in @($State.registry)) {
+        foreach ($name in @('Path','Name','Existed')) {
+            if ($null -eq $registry.PSObject.Properties[$name]) { throw "レジストリ状態に必須項目がありません: $name" }
+        }
+        if ($registry.Existed -isnot [bool]) { throw "レジストリ状態のExistedが不正です: $($registry.Name)" }
+        if ([bool]$registry.Existed -and ($null -eq $registry.PSObject.Properties['Value'] -or [string]::IsNullOrWhiteSpace([string]$registry.Kind))) {
+            throw "レジストリ状態に復元値がありません: $($registry.Name)"
+        }
+    }
+    foreach ($firewall in @($State.firewall)) {
+        foreach ($name in @('Name','DisplayName','Enabled','Direction','Action','Profile')) {
+            if ($null -eq $firewall.PSObject.Properties[$name] -or [string]::IsNullOrWhiteSpace([string]$firewall.$name)) {
+                throw "Firewall状態に必須項目がありません: $name"
+            }
+        }
+    }
+
+    $changedResourceNames = @($Journal.entries | ForEach-Object { [string]$_.change })
+    $resourceNames = @('launcher','startupHook','desktopShortcut','sunshine')
+    if ($null -ne $State.PSObject.Properties['sunshineConfig'] -or $changedResourceNames -contains 'sunshineConfig') { $resourceNames += 'sunshineConfig' }
+    foreach ($resourceName in $resourceNames) {
+        $resource = $State.$resourceName
+        foreach ($name in @('Path','Existed')) {
+            if ($null -eq $resource -or $null -eq $resource.PSObject.Properties[$name] -or
+                ($name -eq 'Path' -and [string]::IsNullOrWhiteSpace([string]$resource.Path))) {
+                throw "$resourceName の状態に必須項目がありません: $name"
+            }
+        }
+        if ($resource.Existed -isnot [bool]) { throw "$resourceName のExistedが不正です。" }
+        if ([bool]$resource.Existed -and $changedResourceNames -contains $resourceName) {
+            if ($null -eq $resource.PSObject.Properties['BackupPath'] -or [string]::IsNullOrWhiteSpace([string]$resource.BackupPath)) {
+                throw "$resourceName のバックアップ先がありません。"
+            }
+            $backupExists = if ($resourceName -eq 'sunshine') {
+                Test-Path -LiteralPath $resource.BackupPath -PathType Container
+            } else {
+                Test-Path -LiteralPath $resource.BackupPath -PathType Leaf
+            }
+            if (-not $backupExists) { throw "$resourceName のバックアップが見つかりません。" }
+        }
+    }
+
+    foreach ($name in @('TaskName','Existed')) {
+        if ($null -eq $State.scheduledTask -or $null -eq $State.scheduledTask.PSObject.Properties[$name]) {
+            throw "Scheduled Task状態に必須項目がありません: $name"
+        }
+    }
+    if ($State.scheduledTask.Existed -isnot [bool]) { throw 'Scheduled Task状態のExistedが不正です。' }
+    if ([bool]$State.scheduledTask.Existed -and [string]::IsNullOrWhiteSpace([string]$State.scheduledTask.Xml)) {
+        throw 'Scheduled Task状態のXMLがありません。'
+    }
+}
+
 function Invoke-ChildStreamUninstall {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
     param([Parameter(Mandatory)][string]$StatePath)
@@ -40,6 +98,7 @@ function Invoke-ChildStreamUninstall {
             throw "復元に必要な状態がありません。システムは変更していません: $change"
         }
     }
+    Assert-ChildStreamUninstallPreconditions -State $state -Journal $journal
     if (-not $PSCmdlet.ShouldProcess($state.installRoot, 'ChildStreamを保存状態へ復元してアンインストール')) { return }
 
     $stateDirectory = Split-Path -Parent $StatePath

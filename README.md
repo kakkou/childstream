@@ -29,9 +29,11 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\setup.ps1 -AutostartMode HighestTask
 ```
 
-最高権限タスクがChild Session内に配置されない環境では、UACを許容する`PromptedStartup`へ切り替えて再セットアップします。
+最高権限タスクがChild Session内に配置されない環境では、いったん`uninstall.ps1`で変更前状態へ復元してから、UACを許容する`PromptedStartup`でセットアップし直します。保存済みの変更前状態を上書きしないため、既存インストールへの上書きセットアップは拒否されます。
 
 ```powershell
+.\scripts\uninstall.ps1 -WhatIf
+.\scripts\uninstall.ps1
 .\scripts\setup.ps1 -AutostartMode PromptedStartup
 ```
 
