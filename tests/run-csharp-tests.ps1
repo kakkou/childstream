@@ -4,6 +4,7 @@ param([ValidateSet('DisplayConfig','ChildSessionAuthorization','ChildSessionSafe
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $csc = "$env:SystemRoot\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+if (-not (Test-Path -LiteralPath $csc -PathType Leaf)) { throw 'C#コンパイラが見つかりません。' }
 $output = Join-Path $env:TEMP 'ChildStreamTests'
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 
