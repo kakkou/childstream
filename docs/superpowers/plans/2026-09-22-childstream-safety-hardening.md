@@ -54,7 +54,7 @@
 
 ---
 
-### タスク1: display.cfgを厳格に解析する
+### Task 1: display.cfgを厳格に解析する
 
 **対象ファイル:**
 - 新規: src/DisplayConfig.cs
@@ -233,7 +233,7 @@ git add src/DisplayConfig.cs src/ChildStream.cs tests/csharp/DisplayConfigTests.
 git commit -m "設定: display.cfgの厳格な検証を追加"
 ~~~
 
-### タスク2: WTS APIと起動許可発行を実装する
+### Task 2: WTS APIと起動許可発行を実装する
 
 **対象ファイル:**
 - 新規: src/ChildSessionNative.cs
@@ -341,7 +341,7 @@ git add src/ChildSessionNative.cs src/ChildSessionAuthorization.cs src/ChildStre
 git commit -m "セッション: WTS APIによる正確な識別と終了を追加"
 ~~~
 
-### タスク3: Child Session側の起動認可を失敗側へ閉じる
+### Task 3: Child Session側の起動認可を失敗側へ閉じる
 
 **対象ファイル:**
 - 新規: scripts/ChildStream.Runtime.psm1
@@ -453,7 +453,7 @@ git add scripts/ChildStream.Runtime.psm1 scripts/childsession-autostart.ps1 test
 git commit -m "起動: Child Session認可を厳格化"
 ~~~
 
-### タスク4: 変更前状態と共通復元処理を実装する
+### Task 4: 変更前状態と共通復元処理を実装する
 
 **対象ファイル:**
 - 新規: scripts/ChildStream.Setup.psm1
@@ -535,7 +535,7 @@ git add scripts/ChildStream.Setup.psm1 tests/SetupState.Tests.ps1
 git commit -m "復元: セットアップ前状態の保存処理を追加"
 ~~~
 
-### タスク5: 検証済み配布物と限定公開でセットアップする
+### Task 5: 検証済み配布物と限定公開でセットアップする
 
 **対象ファイル:**
 - 変更: scripts/setup.ps1
@@ -641,7 +641,7 @@ git add scripts/setup.ps1 scripts/ChildStream.Setup.psm1 tests/Setup.Tests.ps1
 git commit -m "導入: Sunshine検証と限定Firewallを追加"
 ~~~
 
-### タスク6: 保存済み状態から安全にアンインストールする
+### Task 6: 保存済み状態から安全にアンインストールする
 
 **対象ファイル:**
 - 新規: scripts/uninstall.ps1
@@ -713,7 +713,7 @@ git add scripts/uninstall.ps1 scripts/ChildStream.Setup.psm1 tests/Uninstall.Tes
 git commit -m "復元: 安全なアンインストール処理を追加"
 ~~~
 
-### タスク7: Windows CIでビルドとテストを自動化する
+### Task 7: Windows CIでビルドとテストを自動化する
 
 **対象ファイル:**
 - 新規: .github/workflows/windows-ci.yml
@@ -803,7 +803,7 @@ git add .github/workflows/windows-ci.yml tests/run-csharp-tests.ps1
 git commit -m "CI: Windows向けビルドと自動テストを追加"
 ~~~
 
-### タスク8: 利用・復元・実機確認手順を文書化する
+### Task 8: 利用・復元・実機確認手順を文書化する
 
 **対象ファイル:**
 - 変更: README.md

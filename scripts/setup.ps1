@@ -14,7 +14,8 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # 1. Compile the launcher
 $csc = "$env:SystemRoot\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 $iconArg = if (Test-Path "$root\app.ico") { "/win32icon:$root\app.ico" } else { $null }
-& $csc /nologo /target:winexe $iconArg /out:"$root\ChildStream.exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Security.dll /r:Microsoft.CSharp.dll "$root\src\ChildStream.cs"
+$launcherSources = Get-ChildItem (Join-Path $root 'src\*.cs') | ForEach-Object FullName
+& $csc /nologo /target:winexe $iconArg /out:"$root\ChildStream.exe" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Security.dll /r:Microsoft.CSharp.dll $launcherSources
 Write-Host 'Compiled ChildStream.exe'
 
 # 2. Enable child sessions
