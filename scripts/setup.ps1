@@ -93,7 +93,17 @@ function Set-ChildStreamScheduledTask {
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserName
     $principal = New-ScheduledTaskPrincipal -UserId $UserName -LogonType Interactive -RunLevel Highest
-    Register-ScheduledTask -TaskName $script:ScheduledTaskName -Action $action -Trigger $trigger -Principal $principal -Force -ErrorAction Stop | Out-Null
+    Invoke-ChildStreamRegisterScheduledTask -Action $action -Trigger $trigger -Principal $principal
+}
+
+function Invoke-ChildStreamRegisterScheduledTask {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$Action,
+        [Parameter(Mandatory)]$Trigger,
+        [Parameter(Mandatory)]$Principal
+    )
+    Register-ScheduledTask -TaskName $script:ScheduledTaskName -Action $Action -Trigger $Trigger -Principal $Principal -Force -ErrorAction Stop | Out-Null
 }
 
 function Set-ChildStreamStartupHook {

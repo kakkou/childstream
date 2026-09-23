@@ -77,12 +77,12 @@ Describe 'Firewallスナップショット' {
                 [pscustomobject]@{ Name='rule-2'; DisplayName='ChildStream Sunshine'; Enabled='False'; Direction='Outbound'; Action='Block'; Profile='Private'; EdgeTraversalPolicy='Block'; Description=''; Group='' }
             )
         }
-        Mock Get-NetFirewallApplicationFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ Program='C:\Sunshine\sunshine.exe'; Package=$null } }
-        Mock Get-NetFirewallAddressFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ LocalAddress='Any'; RemoteAddress='LocalSubnet' } }
-        Mock Get-NetFirewallPortFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ Protocol='TCP'; LocalPort='47989'; RemotePort='Any'; IcmpType='Any'; DynamicTarget='Any' } }
-        Mock Get-NetFirewallServiceFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ Service='Any' } }
-        Mock Get-NetFirewallInterfaceFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ InterfaceAlias='Any'; InterfaceType='Any' } }
-        Mock Get-NetFirewallSecurityFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ Authentication='NotRequired'; Encryption='NotRequired'; OverrideBlockRules='False'; LocalUser='Any'; RemoteUser='Any'; RemoteMachine='Any' } }
+        Mock Get-ChildStreamFirewallApplicationFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Program='C:\Sunshine\sunshine.exe'; Package=$null } }
+        Mock Get-ChildStreamFirewallAddressFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ LocalAddress='Any'; RemoteAddress='LocalSubnet' } }
+        Mock Get-ChildStreamFirewallPortFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Protocol='TCP'; LocalPort='47989'; RemotePort='Any'; IcmpType='Any'; DynamicTarget='Any' } }
+        Mock Get-ChildStreamFirewallServiceFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Service='Any' } }
+        Mock Get-ChildStreamFirewallInterfaceFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ InterfaceAlias='Any'; InterfaceType='Any' } }
+        Mock Get-ChildStreamFirewallSecurityFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Authentication='NotRequired'; Encryption='NotRequired'; OverrideBlockRules='False'; LocalUser='Any'; RemoteUser='Any'; RemoteMachine='Any' } }
 
         $snapshot = Get-FirewallRuleSnapshot -DisplayName 'ChildStream Sunshine'
 
@@ -94,12 +94,12 @@ Describe 'Firewallスナップショット' {
 
     It '復元不能な高度設定を取得時点で拒否する' {
         Mock Get-NetFirewallRule -ModuleName ChildStream.Setup { [pscustomobject]@{ Name='rule-1'; DisplayName='ChildStream Sunshine'; Enabled='True'; Direction='Inbound'; Action='Allow'; Profile='Private'; EdgeTraversalPolicy='Block'; Description='unsupported'; Group='' } }
-        Mock Get-NetFirewallApplicationFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ Program='Any'; Package=$null } }
-        Mock Get-NetFirewallAddressFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ LocalAddress='Any'; RemoteAddress='Any' } }
-        Mock Get-NetFirewallPortFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ Protocol='Any'; LocalPort='Any'; RemotePort='Any'; IcmpType='Any'; DynamicTarget='Any' } }
-        Mock Get-NetFirewallServiceFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ Service='Any' } }
-        Mock Get-NetFirewallInterfaceFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ InterfaceAlias='Any'; InterfaceType='Any' } }
-        Mock Get-NetFirewallSecurityFilter -ModuleName ChildStream.Setup -RemoveParameterType AssociatedNetFirewallRule { [pscustomobject]@{ Authentication='NotRequired'; Encryption='NotRequired'; OverrideBlockRules='False'; LocalUser='Any'; RemoteUser='Any'; RemoteMachine='Any' } }
+        Mock Get-ChildStreamFirewallApplicationFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Program='Any'; Package=$null } }
+        Mock Get-ChildStreamFirewallAddressFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ LocalAddress='Any'; RemoteAddress='Any' } }
+        Mock Get-ChildStreamFirewallPortFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Protocol='Any'; LocalPort='Any'; RemotePort='Any'; IcmpType='Any'; DynamicTarget='Any' } }
+        Mock Get-ChildStreamFirewallServiceFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Service='Any' } }
+        Mock Get-ChildStreamFirewallInterfaceFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ InterfaceAlias='Any'; InterfaceType='Any' } }
+        Mock Get-ChildStreamFirewallSecurityFilter -ModuleName ChildStream.Setup { [pscustomobject]@{ Authentication='NotRequired'; Encryption='NotRequired'; OverrideBlockRules='False'; LocalUser='Any'; RemoteUser='Any'; RemoteMachine='Any' } }
         { Get-FirewallRuleSnapshot -DisplayName 'ChildStream Sunshine' } | Should -Throw
     }
 

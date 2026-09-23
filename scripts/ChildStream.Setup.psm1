@@ -175,18 +175,25 @@ function Assert-ChildStreamFirewallSnapshotRestorable {
     }
 }
 
+function Get-ChildStreamFirewallApplicationFilter { param($Rule) Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $Rule -ErrorAction Stop }
+function Get-ChildStreamFirewallAddressFilter { param($Rule) Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $Rule -ErrorAction Stop }
+function Get-ChildStreamFirewallPortFilter { param($Rule) Get-NetFirewallPortFilter -AssociatedNetFirewallRule $Rule -ErrorAction Stop }
+function Get-ChildStreamFirewallServiceFilter { param($Rule) Get-NetFirewallServiceFilter -AssociatedNetFirewallRule $Rule -ErrorAction Stop }
+function Get-ChildStreamFirewallInterfaceFilter { param($Rule) Get-NetFirewallInterfaceFilter -AssociatedNetFirewallRule $Rule -ErrorAction Stop }
+function Get-ChildStreamFirewallSecurityFilter { param($Rule) Get-NetFirewallSecurityFilter -AssociatedNetFirewallRule $Rule -ErrorAction Stop }
+
 function Get-FirewallRuleSnapshot {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$DisplayName)
     $result = @()
     $allRules = @(Get-NetFirewallRule -PolicyStore PersistentStore -ErrorAction Stop)
     foreach ($rule in @($allRules | Where-Object { $_.DisplayName -eq $DisplayName })) {
-        $app = Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop
-        $address = Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop
-        $port = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop
-        $service = Get-NetFirewallServiceFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop
-        $interface = Get-NetFirewallInterfaceFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop
-        $security = Get-NetFirewallSecurityFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop
+        $app = Get-ChildStreamFirewallApplicationFilter -Rule $rule
+        $address = Get-ChildStreamFirewallAddressFilter -Rule $rule
+        $port = Get-ChildStreamFirewallPortFilter -Rule $rule
+        $service = Get-ChildStreamFirewallServiceFilter -Rule $rule
+        $interface = Get-ChildStreamFirewallInterfaceFilter -Rule $rule
+        $security = Get-ChildStreamFirewallSecurityFilter -Rule $rule
         $snapshot = [pscustomobject]@{
             Name=[string]$rule.Name; DisplayName=[string]$rule.DisplayName; Enabled=[string]$rule.Enabled
             Direction=[string]$rule.Direction; Action=[string]$rule.Action; Profile=[string]$rule.Profile

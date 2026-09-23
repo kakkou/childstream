@@ -43,10 +43,13 @@ Describe '自動起動' {
         Mock New-ScheduledTaskAction { 'action' }
         Mock New-ScheduledTaskTrigger { 'trigger' }
         Mock New-ScheduledTaskPrincipal { 'principal' }
-        Mock Register-ScheduledTask -RemoveParameterType Action,Trigger,Principal {}
+        Mock Invoke-ChildStreamRegisterScheduledTask {}
         Set-ChildStreamScheduledTask -Root 'C:\ChildStream' -UserName 'HOST\user'
         Should -Invoke New-ScheduledTaskPrincipal -Times 1 -ParameterFilter { $LogonType -eq 'Interactive' -and $RunLevel -eq 'Highest' -and $UserId -eq 'HOST\user' }
         Should -Invoke New-ScheduledTaskAction -Times 1 -ParameterFilter { $Argument -like '*-LaunchMode HighestTask*' }
+        Should -Invoke Invoke-ChildStreamRegisterScheduledTask -Times 1 -ParameterFilter {
+            $Action -eq 'action' -and $Trigger -eq 'trigger' -and $Principal -eq 'principal'
+        }
     }
 
     It 'PromptedStartupフックはRunAsモードだけを指定する' {
