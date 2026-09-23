@@ -1,4 +1,4 @@
-Set-StrictMode -Version 2.0
+﻿Set-StrictMode -Version 2.0
 
 function Write-ChildStreamJsonAtomic {
     param([Parameter(Mandatory)]$Value, [Parameter(Mandatory)][string]$Path)

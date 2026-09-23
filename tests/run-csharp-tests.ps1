@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([ValidateSet('DisplayConfig','ChildSessionAuthorization','ChildSessionSafety','All')][string]$Test = 'All')
 
 $ErrorActionPreference = 'Stop'

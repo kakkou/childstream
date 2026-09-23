@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     Import-Module "$PSScriptRoot\..\scripts\ChildStream.Setup.psm1" -Force
 }
 

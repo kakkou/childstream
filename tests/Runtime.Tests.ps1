@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     Import-Module "$PSScriptRoot\..\scripts\ChildStream.Runtime.psm1" -Force
 
     $script:now = [DateTime]::Parse('2026-09-22T12:00:00.0000000Z').ToUniversalTime()

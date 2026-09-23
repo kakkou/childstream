@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('HighestTask', 'PromptedStartup')]
     [string]$LaunchMode = 'HighestTask'

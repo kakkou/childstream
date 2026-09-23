@@ -1,4 +1,4 @@
-[CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+﻿[CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
 param()
 
 $ErrorActionPreference = 'Stop'
