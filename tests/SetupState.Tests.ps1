@@ -127,6 +127,19 @@ Describe 'Backup-FileResource' {
     }
 }
 
+Describe 'Restore-DirectoryResource' {
+    It '置換したディレクトリをバックアップから戻す' {
+        $path = Join-Path $TestDrive 'Sunshine'
+        $backup = Join-Path $TestDrive 'Sunshine.backup'
+        New-Item -ItemType Directory -Path $path,$backup -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $path 'new.txt') -Value 'new'
+        Set-Content -LiteralPath (Join-Path $backup 'old.txt') -Value 'old'
+        Restore-DirectoryResource -Snapshot ([pscustomobject]@{ Path=$path; BackupPath=$backup; Existed=$true })
+        Test-Path (Join-Path $path 'old.txt') | Should -BeTrue
+        Test-Path $backup | Should -BeFalse
+    }
+}
+
 Describe 'Restore-ChildSessionEnabledState' {
     It '無効状態へ戻した後check終了コード1を確認する' {
         Mock Start-Process {

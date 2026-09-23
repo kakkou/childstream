@@ -271,6 +271,16 @@ function Restore-FileResource {
     elseif ([IO.File]::Exists([string]$Snapshot.Path)) { Remove-Item -LiteralPath $Snapshot.Path -Force -ErrorAction Stop }
 }
 
+function Restore-DirectoryResource {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Snapshot)
+    if (Test-Path -LiteralPath $Snapshot.Path) { Remove-Item -LiteralPath $Snapshot.Path -Recurse -Force -ErrorAction Stop }
+    if ([bool]$Snapshot.Existed) {
+        if (-not (Test-Path -LiteralPath $Snapshot.BackupPath -PathType Container)) { throw "ディレクトリバックアップがありません: $($Snapshot.BackupPath)" }
+        Move-Item -LiteralPath $Snapshot.BackupPath -Destination $Snapshot.Path -ErrorAction Stop
+    }
+}
+
 function Restore-ChildSessionEnabledState {
     [CmdletBinding()]
     param([Parameter(Mandatory)][bool]$Enabled, [Parameter(Mandatory)][string]$LauncherPath)
@@ -312,10 +322,11 @@ function New-ChildStreamInstallState {
     param(
         [Parameter(Mandatory)][string]$InstallRoot,
         [string]$FirewallDisplayName='ChildStream Sunshine',
-        [string]$ScheduledTaskName='ChildStream Sunshine'
+        [string]$ScheduledTaskName='ChildStream Sunshine',
+        [string]$LauncherPath
     )
-    $launcherPath = Join-Path $InstallRoot 'ChildStream.exe'
-    $check = Start-Process -FilePath $launcherPath -ArgumentList '-check' -Wait -PassThru -ErrorAction Stop
+    if ([string]::IsNullOrWhiteSpace($LauncherPath)) { $LauncherPath = Join-Path $InstallRoot 'ChildStream.exe' }
+    $check = Start-Process -FilePath $LauncherPath -ArgumentList '-check' -Wait -PassThru -ErrorAction Stop
     if (@(0,1) -notcontains $check.ExitCode) { throw "Child Sessionsの状態を取得できません: $($check.ExitCode)" }
     [pscustomobject]@{
         schemaVersion=1; installRoot=$InstallRoot; capturedAtUtc=[DateTime]::UtcNow.ToString('o')
@@ -356,7 +367,9 @@ function Restore-ChildStreamState {
             'startupHook' { Restore-FileResource -Snapshot $State.startupHook }
             'scheduledTask' { Restore-ScheduledTaskSnapshot -Snapshot $State.scheduledTask }
             'desktopShortcut' { Restore-FileResource -Snapshot $State.desktopShortcut }
-            'sunshine' { Restore-FileResource -Snapshot $State.sunshine }
+            'launcher' { Restore-FileResource -Snapshot $State.launcher }
+            'sunshine' { Restore-DirectoryResource -Snapshot $State.sunshine }
+            'sunshineConfig' { Restore-FileResource -Snapshot $State.sunshineConfig }
             'createdArtifacts' {
                 foreach ($path in @($State.createdArtifacts)) { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force -Recurse -ErrorAction Stop } }
             }
@@ -369,6 +382,6 @@ Export-ModuleMember -Function @(
     'New-ChildStreamInstallState','Save-ChildStreamInstallStateOnce','Save-ChildStreamInstallJournalOnce',
     'Read-ChildStreamInstallJournal','Start-ChildStreamChange','Complete-ChildStreamChange',
     'Get-RegistryValueSnapshot','Restore-RegistryValueSnapshot','Restore-ChildSessionEnabledState',
-    'Get-FirewallRuleSnapshot','Restore-FirewallRuleSnapshot','Backup-FileResource','Restore-FileResource',
+    'Get-FirewallRuleSnapshot','Restore-FirewallRuleSnapshot','Backup-FileResource','Restore-FileResource','Restore-DirectoryResource',
     'Get-ScheduledTaskSnapshot','Restore-ScheduledTaskSnapshot','Restore-ChildStreamState'
 )
