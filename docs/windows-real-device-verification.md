@@ -214,12 +214,44 @@ $Task.Triggers | Format-List * |
 $Task.Actions | Format-List * |
     Tee-Object -FilePath (Join-Path $EvidenceRoot 'scheduled-task-actions.txt')
 
-$ExpectedUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+function ConvertTo-ChildStreamSid {
+    param([Parameter(Mandatory)][string]$UserId)
+
+    if ($UserId -match '^S-\d+(?:-\d+)+$') { return $UserId }
+    $Candidates = @($UserId)
+    if ($UserId -notmatch '\\') { $Candidates += "$env:COMPUTERNAME\$UserId" }
+    foreach ($Candidate in $Candidates | Select-Object -Unique) {
+        try {
+            $Account = New-Object System.Security.Principal.NTAccount -ArgumentList $Candidate
+            return $Account.Translate([Security.Principal.SecurityIdentifier]).Value
+        }
+        catch { }
+    }
+    throw "WindowsユーザーをSIDへ変換できません: $UserId"
+}
+
+$Identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$ExpectedUser = $Identity.Name
+$ExpectedSid = $Identity.User.Value
+$PrincipalUserId = [string]$Task.Principal.UserId
+$PrincipalSid = ConvertTo-ChildStreamSid -UserId $PrincipalUserId
+$TriggerUserIds = @($Task.Triggers | ForEach-Object { [string]$_.UserId })
+$TriggerSids = @($TriggerUserIds | ForEach-Object { ConvertTo-ChildStreamSid -UserId $_ })
+
+[pscustomobject]@{
+    ExpectedUser = $ExpectedUser
+    ExpectedSid = $ExpectedSid
+    PrincipalUserId = $PrincipalUserId
+    PrincipalSid = $PrincipalSid
+    TriggerUserIds = $TriggerUserIds -join '; '
+    TriggerSids = $TriggerSids -join '; '
+} | Format-List | Tee-Object -FilePath (Join-Path $EvidenceRoot 'scheduled-task-identities.txt')
+
 $Checks = [ordered]@{
-    PrincipalUser = [string]$Task.Principal.UserId -ieq $ExpectedUser
+    PrincipalUser = $PrincipalSid -eq $ExpectedSid
     LogonTypeInteractive = [string]$Task.Principal.LogonType -eq 'Interactive'
     RunLevelHighest = [string]$Task.Principal.RunLevel -eq 'Highest'
-    LogonTriggerUser = @($Task.Triggers | Where-Object { [string]$_.UserId -ieq $ExpectedUser }).Count -gt 0
+    LogonTriggerUser = $TriggerSids -contains $ExpectedSid
     PowerShellAction = @($Task.Actions | Where-Object { [string]$_.Execute -match '(^|\\)powershell\.exe$' }).Count -gt 0
     ChildSessionAutostart = [string]$Task.Actions.Arguments -match 'childsession-autostart\.ps1'
     HighestTaskMode = [string]$Task.Actions.Arguments -match '-LaunchMode HighestTask'
@@ -232,7 +264,7 @@ if ($FailedChecks.Count -gt 0) {
 }
 ```
 
-`Out-File`は画面に表示せずファイルだけへ保存します。この手順では`Tee-Object`を使用するため、内容を画面で確認しながら同じ証跡ファイルへ保存できます。最後の表がすべて`True`なら合格です。`False`があれば例外で停止します。
+`Out-File`は画面に表示せずファイルだけへ保存します。この手順では`Tee-Object`を使用するため、内容を画面で確認しながら同じ証跡ファイルへ保存できます。タスクスケジューラは同じローカルユーザーを`PC名\ユーザー名`、短い`ユーザー名`、SIDのいずれかで返すため、PrincipalとTriggerはSIDへ統一して比較します。最後の表がすべて`True`なら合格です。`False`があれば例外で停止します。
 
 合格条件:
 
