@@ -56,6 +56,13 @@ Describe 'Restore-RegistryValueSnapshot' {
         Should -Invoke Remove-ItemProperty -ModuleName ChildStream.Setup -Times 1 -ParameterFilter { $Name -eq 'Value' }
     }
 
+    It 'PowerShell 5.1が値不存在をPSArgumentExceptionで報告しても成功する' {
+        Mock Remove-ItemProperty -ModuleName ChildStream.Setup {}
+        Mock Get-ItemProperty -ModuleName ChildStream.Setup { throw [Management.Automation.PSArgumentException]::new('missing') }
+        Restore-RegistryValueSnapshot -Snapshot ([pscustomobject]@{ Path='HKCU:\Software\ChildStreamTest'; Name='Value'; Existed=$false })
+        Should -Invoke Remove-ItemProperty -ModuleName ChildStream.Setup -Times 1 -ParameterFilter { $Name -eq 'Value' }
+    }
+
     It '削除後も値が残る場合は失敗する' {
         Mock Remove-ItemProperty -ModuleName ChildStream.Setup {}
         Mock Get-ItemProperty -ModuleName ChildStream.Setup { [pscustomobject]@{ Value = 1 } }
