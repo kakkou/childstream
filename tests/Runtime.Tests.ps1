@@ -303,7 +303,8 @@ Describe 'Invoke-ChildSessionSunshine' {
         $script:root = Join-Path $TestDrive 'repo'
         $sunshineDirectory = Join-Path $script:root 'Sunshine\Sunshine'
         New-Item -ItemType Directory -Path $sunshineDirectory -Force | Out-Null
-        Set-Content -LiteralPath (Join-Path $sunshineDirectory 'sunshine.exe') -Value 'test executable'
+        $script:childStreamSunshinePath = Join-Path $sunshineDirectory 'sunshine.exe'
+        Set-Content -LiteralPath $script:childStreamSunshinePath -Value 'test executable'
 
         Mock Get-Date -ModuleName ChildStream.Runtime {
             [DateTime]::Parse('2026-09-22T12:00:00.0000000Z').ToUniversalTime()
@@ -322,7 +323,11 @@ Describe 'Invoke-ChildSessionSunshine' {
     It '同じSession IDのSunshineが実行中なら重複起動しない' {
         Mock Get-Process -ModuleName ChildStream.Runtime {
             if (-not $PesterBoundParameters.ContainsKey('Id')) {
-                return [pscustomobject]@{ ProcessName = 'sunshine'; SessionId = 42 }
+                return [pscustomobject]@{
+                    ProcessName = 'sunshine'
+                    SessionId = 42
+                    Path = $script:childStreamSunshinePath
+                }
             }
             if ($Id -eq 1234) {
                 return [pscustomobject]@{
@@ -335,6 +340,60 @@ Describe 'Invoke-ChildSessionSunshine' {
         Invoke-ChildSessionSunshine -Root $script:root -LaunchMode HighestTask -WaitSeconds 0
 
         Assert-MockCalled Start-Process -ModuleName ChildStream.Runtime -Times 0 -Exactly
+    }
+
+    It '同じSession IDでも別パスのSunshineならChildStream版を起動する' {
+        Mock Get-Process -ModuleName ChildStream.Runtime {
+            if (-not $PesterBoundParameters.ContainsKey('Id')) {
+                if ($script:runtimeHooks.State.SunshineStarted) {
+                    return @(
+                        [pscustomobject]@{
+                            ProcessName = 'sunshine'
+                            SessionId = 42
+                            Path = 'C:\Program Files\Sunshine\Sunshine.exe'
+                        }
+                        [pscustomobject]@{
+                            ProcessName = 'sunshine'
+                            SessionId = 42
+                            Path = $script:childStreamSunshinePath
+                        }
+                    )
+                }
+                return [pscustomobject]@{
+                    ProcessName = 'sunshine'
+                    SessionId = 42
+                    Path = 'C:\Program Files\Sunshine\Sunshine.exe'
+                }
+            }
+            if ($Id -eq 1234) { return $script:matchingProcess }
+            return [pscustomobject]@{ SessionId = 42 }
+        }
+
+        Invoke-ChildSessionSunshine -Root $script:root -LaunchMode HighestTask -WaitSeconds 0
+
+        Assert-MockCalled Start-Process -ModuleName ChildStream.Runtime -Times 1 -Exactly
+    }
+
+    It '同じSession IDのSunshineのパスを確認できない場合は安全側で起動しない' {
+        $unreadableProcess = [pscustomobject]@{
+            ProcessName = 'sunshine'
+            SessionId = 42
+        }
+        $unreadableProcess | Add-Member -MemberType ScriptProperty -Name Path -Value {
+            throw 'access denied'
+        }
+        Mock Get-Process -ModuleName ChildStream.Runtime {
+            if (-not $PesterBoundParameters.ContainsKey('Id')) { return $unreadableProcess }
+            if ($Id -eq 1234) { return $script:matchingProcess }
+            return [pscustomobject]@{ SessionId = 42 }
+        }
+
+        Invoke-ChildSessionSunshine -Root $script:root -LaunchMode HighestTask -WaitSeconds 0
+
+        Assert-MockCalled Start-Process -ModuleName ChildStream.Runtime -Times 0 -Exactly
+        Assert-MockCalled Add-Content -ModuleName ChildStream.Runtime -ParameterFilter {
+            $Value -like '*launch refused: sunshine-process-check-failed*'
+        }
     }
 
     It '現在のSession IDと許可が異なる場合は起動しない' {
@@ -378,7 +437,11 @@ Describe 'Invoke-ChildSessionSunshine' {
         Mock Get-Process -ModuleName ChildStream.Runtime {
             if (-not $PesterBoundParameters.ContainsKey('Id')) {
                 if ($script:runtimeHooks.State.SunshineStarted) {
-                    return [pscustomobject]@{ ProcessName = 'sunshine'; SessionId = 42 }
+                    return [pscustomobject]@{
+                        ProcessName = 'sunshine'
+                        SessionId = 42
+                        Path = $script:childStreamSunshinePath
+                    }
                 }
                 return [pscustomobject]@{ ProcessName = 'sunshine'; SessionId = 99 }
             }
@@ -407,7 +470,11 @@ Describe 'Invoke-ChildSessionSunshine' {
             }
             $script:sunshineEnumerationCount++
             if ($script:sunshineEnumerationCount -eq 1) { return @() }
-            return [pscustomobject]@{ ProcessName = 'sunshine'; SessionId = 42 }
+            return [pscustomobject]@{
+                ProcessName = 'sunshine'
+                SessionId = 42
+                Path = $script:childStreamSunshinePath
+            }
         }
 
         Invoke-ChildSessionSunshine -Root $script:root -LaunchMode HighestTask -WaitSeconds 0
@@ -455,7 +522,11 @@ Describe 'Invoke-ChildSessionSunshine' {
         Mock Get-Process -ModuleName ChildStream.Runtime {
             if (-not $PesterBoundParameters.ContainsKey('Id')) {
                 if ($script:runtimeHooks.State.SunshineStarted) {
-                    return [pscustomobject]@{ ProcessName = 'sunshine'; SessionId = 42 }
+                    return [pscustomobject]@{
+                        ProcessName = 'sunshine'
+                        SessionId = 42
+                        Path = $script:childStreamSunshinePath
+                    }
                 }
                 return @()
             }
@@ -482,7 +553,11 @@ Describe 'Invoke-ChildSessionSunshine' {
         Mock Get-Process -ModuleName ChildStream.Runtime {
             if (-not $PesterBoundParameters.ContainsKey('Id')) {
                 if ($script:runtimeHooks.State.SunshineStarted) {
-                    return [pscustomobject]@{ ProcessName = 'sunshine'; SessionId = 42 }
+                    return [pscustomobject]@{
+                        ProcessName = 'sunshine'
+                        SessionId = 42
+                        Path = $script:childStreamSunshinePath
+                    }
                 }
                 return @()
             }
@@ -505,7 +580,11 @@ Describe 'Invoke-ChildSessionSunshine' {
         Mock Get-Process -ModuleName ChildStream.Runtime {
             if (-not $PesterBoundParameters.ContainsKey('Id')) {
                 if ($script:runtimeHooks.State.SunshineStarted) {
-                    return [pscustomobject]@{ ProcessName = 'sunshine'; SessionId = 42 }
+                    return [pscustomobject]@{
+                        ProcessName = 'sunshine'
+                        SessionId = 42
+                        Path = $script:childStreamSunshinePath
+                    }
                 }
                 return @()
             }
