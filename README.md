@@ -123,7 +123,9 @@ WIDTHxHEIGHTxSCALE
 
 ## Manual verification
 
-コード実装はWindows CIの構文検査、C#ビルド・単体テスト、PowerShell単体テストに合格しています。ただし、Windows実機での動作確認は未完了です。導入先の実機で次を確認してください。
+コード実装はWindows CIの構文検査、C#ビルド・単体テスト、PowerShell単体テストに合格しています。ただし、Windows実機での動作確認は未完了です。導入前の証跡採取、停止条件、各コマンド、期待結果、uninstall後の比較方法は[Windows実機確認フロー](docs/windows-real-device-verification.md)を参照してください。
+
+概要として、導入先の実機で次を確認してください。
 
 1. 物理コンソールへログオンしても、ChildStream用Sunshineが自動起動しない。
 2. mstscなどによる通常のRDPログオンでも、ChildStream用Sunshineが自動起動しない。
