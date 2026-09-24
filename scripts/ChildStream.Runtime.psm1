@@ -155,16 +155,28 @@ function Get-ChildStreamRetryDelayMilliseconds {
 
 function Find-ChildStreamSunshineInSession {
     param(
-        [Parameter(Mandatory)][int]$SessionId
+        [Parameter(Mandatory)][int]$SessionId,
+        [Parameter(Mandatory)][string]$ExpectedExecutablePath
     )
 
     try {
-        $matchingProcesses = @(
-            Get-Process -ErrorAction Stop |
-                Where-Object {
-                    $_.ProcessName -ieq 'sunshine' -and [int]$_.SessionId -eq $SessionId
-                }
-        )
+        $expectedFullPath = [IO.Path]::GetFullPath($ExpectedExecutablePath)
+        $matchingProcesses = @()
+        foreach ($process in @(Get-Process -ErrorAction Stop)) {
+            if ($process.ProcessName -ine 'sunshine' -or [int]$process.SessionId -ne $SessionId) {
+                continue
+            }
+
+            $processPath = [string]$process.Path
+            if ([string]::IsNullOrWhiteSpace($processPath)) {
+                throw 'Sunshine executable path is unavailable.'
+            }
+
+            $processFullPath = [IO.Path]::GetFullPath($processPath)
+            if ($processFullPath -ieq $expectedFullPath) {
+                $matchingProcesses += $process
+            }
+        }
         return [pscustomobject]@{
             Succeeded = $true
             Processes = $matchingProcesses
@@ -355,7 +367,9 @@ function Invoke-ChildSessionSunshine {
         return
     }
 
-    $initialProcessCheck = Find-ChildStreamSunshineInSession -SessionId $currentSessionId
+    $initialProcessCheck = Find-ChildStreamSunshineInSession `
+        -SessionId $currentSessionId `
+        -ExpectedExecutablePath $sunshinePath
     if (-not $initialProcessCheck.Succeeded) {
         Write-ChildStreamRuntimeLog -Root $Root -Message 'launch refused: sunshine-process-check-failed'
         return
@@ -410,7 +424,9 @@ function Invoke-ChildSessionSunshine {
             return
         }
 
-        $lockedProcessCheck = Find-ChildStreamSunshineInSession -SessionId $lockedSessionId
+        $lockedProcessCheck = Find-ChildStreamSunshineInSession `
+            -SessionId $lockedSessionId `
+            -ExpectedExecutablePath $sunshinePath
         if (-not $lockedProcessCheck.Succeeded) {
             Write-ChildStreamRuntimeLog -Root $Root -Message 'launch refused: sunshine-process-check-failed'
             return
@@ -429,7 +445,9 @@ function Invoke-ChildSessionSunshine {
 
         $startConfirmationTimer = New-ChildStreamStopwatch
         while ($true) {
-            $startedProcessCheck = Find-ChildStreamSunshineInSession -SessionId $lockedSessionId
+            $startedProcessCheck = Find-ChildStreamSunshineInSession `
+                -SessionId $lockedSessionId `
+                -ExpectedExecutablePath $sunshinePath
             if (-not $startedProcessCheck.Succeeded) {
                 Write-ChildStreamRuntimeLog -Root $Root -Message 'launch failed: sunshine-start-check-failed'
                 return

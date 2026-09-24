@@ -95,6 +95,7 @@ WIDTHxHEIGHTxSCALE
 - 「End session」は、操作直前に取得したChild Session IDだけを`WTSLogoffSession`へ渡します。取得に失敗した場合、別セッションを列挙してログオフするフォールバックはありません。
 - コンソール側は短時間だけ有効な起動許可を`%LOCALAPPDATA%\ChildStream\active-child-session.json`へ発行します。パスワードやDPAPIデータは保存しません。
 - Child Session側はSession ID、有効期限、ランチャーのプロセスIDと起動時刻を再検証し、不一致ならSunshineを起動しません。
+- 同一Session内のSunshineは実行ファイルの完全パスでも識別します。通常利用の別インストール版はChildStream同梱版とみなさず、パスを確認できない場合は安全側で起動を拒否します。
 - Firewall規則は受信方向、Privateプロファイル、`RemoteAddress=LocalSubnet`に限定されます。Publicネットワークやインターネット全体には公開しません。
 - 初回セットアップ前の状態は`%ProgramData%\ChildStream\install-state.json`へ保存し、変更の進行状況は同じディレクトリの`install-journal.json`へ記録します。最初の正常なスナップショットは再セットアップで上書きしません。
 

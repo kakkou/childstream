@@ -276,14 +276,56 @@ if ($FailedChecks.Count -gt 0) {
 
 1. PCを再起動し、物理コンソールで同じWindowsユーザーへサインインする。
 2. 60秒待つ。
-3. 通常権限のPowerShellで次を実行する。
+3. 管理者PowerShellを開き、ChildStreamのリポジトリ直下へ移動してから次をまとめて実行する。管理者権限は、別プロセスの実行ファイルパスを確実に取得するために使用する。
 
 ```powershell
+$EvidenceRoot = Get-ChildItem "$env:USERPROFILE\Desktop" -Directory -Filter 'ChildStream-Verification-*' |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
+    throw '手順1で作成した証跡フォルダーが見つかりません。'
+}
+$EvidenceRoot
+
 $CurrentSessionId = (Get-Process -Id $PID).SessionId
-Get-Process -Name sunshine -ErrorAction SilentlyContinue |
-    Select-Object Id, SessionId, Path, StartTime
-"CurrentSessionId=$CurrentSessionId"
+$ExpectedSunshinePath = [IO.Path]::GetFullPath(
+    (Join-Path (Get-Location) 'Sunshine\Sunshine\sunshine.exe')
+)
+$SunshineProcesses = @(
+    Get-CimInstance Win32_Process |
+        Where-Object { $_.Name -ieq 'sunshine.exe' }
+)
+$ChildStreamSunshine = @(
+    $SunshineProcesses |
+        Where-Object {
+            [int]$_.SessionId -eq $CurrentSessionId -and
+            -not [string]::IsNullOrWhiteSpace([string]$_.ExecutablePath) -and
+            [IO.Path]::GetFullPath([string]$_.ExecutablePath) -ieq $ExpectedSunshinePath
+        }
+)
+
+$SunshineProcesses |
+    Select-Object ProcessId, ParentProcessId, SessionId, ExecutablePath, CommandLine |
+    Format-List |
+    Tee-Object -FilePath (Join-Path $EvidenceRoot 'physical-console-sunshine-processes.txt')
+
+[pscustomobject]@{
+    CurrentSessionId = $CurrentSessionId
+    ExpectedSunshinePath = $ExpectedSunshinePath
+    ChildStreamSunshineCount = $ChildStreamSunshine.Count
+} | Format-List |
+    Tee-Object -FilePath (Join-Path $EvidenceRoot 'physical-console-sunshine-check.txt')
+
+Get-Content '.\autostart.log' -Tail 50 -ErrorAction SilentlyContinue |
+    Tee-Object -FilePath (Join-Path $EvidenceRoot 'physical-console-autostart-log.txt')
+
+if ($ChildStreamSunshine.Count -gt 0) {
+    throw '物理コンソールのSession IDでChildStream同梱版Sunshineが起動しています。'
+}
+Write-Host 'PASS: 物理コンソールではChildStream同梱版Sunshineが起動していません。'
 ```
+
+`C:\Program Files\Sunshine\Sunshine.exe`など、別の実行ファイルパスにある通常利用のSunshineが表示されても、それだけでは不合格ではありません。ChildStreamの自動起動判定は、Session IDだけでなく`ExpectedSunshinePath`との完全一致で同梱版を識別します。`autostart.log`に`authorization refused: authorization-state-missing`があれば、タスクが物理コンソールでSunshine起動を拒否した証拠になります。
 
 合格条件:
 
@@ -293,7 +335,7 @@ Get-Process -Name sunshine -ErrorAction SilentlyContinue |
 
 1. `mstsc.exe`などで通常のRDP接続を行い、同じWindowsユーザーへサインインする。
 2. 60秒待つ。
-3. RDP内のPowerShellで5.2と同じコマンドを実行する。
+3. RDP内で管理者PowerShellを開き、ChildStreamのリポジトリ直下へ移動して、5.2と同じコマンドを実行する。証跡ファイル名の`physical-console`は`normal-rdp`へ置き換える。
 
 合格条件:
 
@@ -308,19 +350,45 @@ Get-Process -Name sunshine -ErrorAction SilentlyContinue |
 2. `display.cfg`が有効な値、または未配置であることを確認する。
 3. Windowsアカウントのパスワードを入力して接続する。
 4. Child Session内でサインイン完了後、最大60秒待つ。
-5. Child Session内のPowerShellで次を実行する。
+5. Child Session内で管理者PowerShellを開き、ChildStreamのリポジトリ直下へ移動して次を実行する。
 
 ```powershell
 $CurrentSessionId = (Get-Process -Id $PID).SessionId
-$Sunshine = Get-Process -Name sunshine -ErrorAction Stop
-$Sunshine | Select-Object Id, SessionId, Path, StartTime
-"CurrentSessionId=$CurrentSessionId"
+$ExpectedSunshinePath = [IO.Path]::GetFullPath(
+    (Join-Path (Get-Location) 'Sunshine\Sunshine\sunshine.exe')
+)
+$ChildStreamSunshine = @(
+    Get-CimInstance Win32_Process |
+        Where-Object {
+            $_.Name -ieq 'sunshine.exe' -and
+            [int]$_.SessionId -eq $CurrentSessionId -and
+            -not [string]::IsNullOrWhiteSpace([string]$_.ExecutablePath) -and
+            [IO.Path]::GetFullPath([string]$_.ExecutablePath) -ieq $ExpectedSunshinePath
+        }
+)
+
+$ChildStreamSunshine |
+    Select-Object ProcessId, ParentProcessId, SessionId, ExecutablePath, CommandLine |
+    Format-List |
+    Tee-Object -FilePath (Join-Path $EvidenceRoot 'child-session-sunshine-process.txt')
+
+[pscustomobject]@{
+    CurrentSessionId = $CurrentSessionId
+    ExpectedSunshinePath = $ExpectedSunshinePath
+    ChildStreamSunshineCount = $ChildStreamSunshine.Count
+} | Format-List |
+    Tee-Object -FilePath (Join-Path $EvidenceRoot 'child-session-sunshine-check.txt')
+
+if ($ChildStreamSunshine.Count -ne 1) {
+    throw "Child Session内のChildStream同梱版Sunshine数が1ではありません: $($ChildStreamSunshine.Count)"
+}
+Write-Host 'PASS: Child Session内でChildStream同梱版Sunshineが1件起動しています。'
 ```
 
 合格条件:
 
-- Sunshineの`SessionId`がChild Session内の`CurrentSessionId`と一致する。
-- Sunshineの`Path`がChildStream配下を指す。
+- `ChildStreamSunshineCount=1`である。
+- Sunshineの`SessionId`がChild Session内の`CurrentSessionId`と一致し、`ExecutablePath`が`ExpectedSunshinePath`と完全一致する。
 - ログオン時にUACプロンプトが表示されない。
 - 物理コンソールと通常RDPのSession IDではChildStream用Sunshineが起動していない。
 

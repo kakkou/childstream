@@ -97,7 +97,9 @@ RDP ActiveXが接続状態になった後、ランチャーは有効なChild Ses
 - 発行元ランチャーのプロセスIDが存在する。
 - 実際のプロセス起動時刻が、発行された起動時刻と一致する。
 - 設定されたSunshine実行ファイルが存在する。
-- 同じSession IDでSunshineがまだ実行されていない。
+- 同じSession IDかつChildStream同梱版の完全パスでSunshineがまだ実行されていない。
+
+通常利用の別インストール版Sunshineが同じSession IDに存在しても、ChildStream同梱版とはみなさない。同じSession IDの`sunshine.exe`について実行ファイルパスを取得できない場合は、安全側でChildStream同梱版を起動せず診断ログを残す。
 
 検証に失敗した場合は、すべて起動しない側へ倒す。通常の非Childログオンでは、エラーダイアログを表示せず簡潔な診断ログを残す。
 
