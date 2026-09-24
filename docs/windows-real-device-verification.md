@@ -116,7 +116,28 @@ Set-ExecutionPolicy -Scope Process Bypass
     Tee-Object -FilePath (Join-Path $EvidenceRoot 'setup.txt')
 ```
 
-既存の`Sunshine`ディレクトリが固定配布物と一致せず停止した場合は正常な安全動作です。内容とバックアップ余裕を確認し、置換が必要な場合だけ次を実行します。
+setup開始前からリポジトリ直下の`<リポジトリ>\Sunshine`（この文書では`.\Sunshine`）が存在し、固定配布物と一致せず停止した場合は正常な安全動作です。Windowsへ別途インストールしたSunshineや`Program Files`配下を指すものではありません。setupがエラーなく完了した場合、この確認と`-ReplaceExistingSunshine`は不要です。
+
+不一致エラーが表示された場合だけ、既存配置に残したい設定、資格情報、証明書、独自ファイルがないか確認します。また、既存ディレクトリ全体を`%ProgramData%\ChildStream\Backups\Sunshine`へ退避できる空き容量と、同名バックアップがまだないことを確認します。
+
+```powershell
+$ExistingSunshine = '.\Sunshine'
+$ExistingBytes = (Get-ChildItem $ExistingSunshine -Recurse -File -ErrorAction Stop |
+    Measure-Object Length -Sum).Sum
+$ProgramDataDriveName = [IO.Path]::GetPathRoot($env:ProgramData).TrimEnd('\').TrimEnd(':')
+$ProgramDataDrive = Get-PSDrive -Name $ProgramDataDriveName
+
+Get-ChildItem $ExistingSunshine -Force
+Get-ChildItem (Join-Path $ExistingSunshine 'Sunshine\config') -Force -ErrorAction SilentlyContinue
+Get-Content (Join-Path $ExistingSunshine 'childstream-version.json') -Raw -ErrorAction SilentlyContinue
+[pscustomobject]@{
+    ExistingSunshineMiB = [math]::Round($ExistingBytes / 1MB, 2)
+    BackupDriveFreeMiB = [math]::Round($ProgramDataDrive.Free / 1MB, 2)
+    BackupAlreadyExists = Test-Path "$env:ProgramData\ChildStream\Backups\Sunshine"
+}
+```
+
+置換を選ぶ条件は、必要なファイルを別途確保済みで、`BackupDriveFreeMiB`が`ExistingSunshineMiB`より大きく、`BackupAlreadyExists=False`であることです。条件を満たし、既存配置を固定配布物へ置き換えると判断した場合だけ次を実行します。
 
 ```powershell
 .\scripts\setup.ps1 -AutostartMode HighestTask -ReplaceExistingSunshine
@@ -185,14 +206,33 @@ $Application | Select-Object Program |
 ```powershell
 $Task = Get-ScheduledTask -TaskName 'ChildStream Sunshine'
 $Task | Select-Object TaskName, State |
-    Format-List | Out-File (Join-Path $EvidenceRoot 'scheduled-task.txt')
+    Format-List | Tee-Object -FilePath (Join-Path $EvidenceRoot 'scheduled-task.txt')
 $Task.Principal | Select-Object UserId, LogonType, RunLevel |
-    Format-List | Out-File (Join-Path $EvidenceRoot 'scheduled-task-principal.txt')
+    Format-List | Tee-Object -FilePath (Join-Path $EvidenceRoot 'scheduled-task-principal.txt')
 $Task.Triggers | Format-List * |
-    Out-File (Join-Path $EvidenceRoot 'scheduled-task-triggers.txt')
+    Tee-Object -FilePath (Join-Path $EvidenceRoot 'scheduled-task-triggers.txt')
 $Task.Actions | Format-List * |
-    Out-File (Join-Path $EvidenceRoot 'scheduled-task-actions.txt')
+    Tee-Object -FilePath (Join-Path $EvidenceRoot 'scheduled-task-actions.txt')
+
+$ExpectedUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$Checks = [ordered]@{
+    PrincipalUser = [string]$Task.Principal.UserId -ieq $ExpectedUser
+    LogonTypeInteractive = [string]$Task.Principal.LogonType -eq 'Interactive'
+    RunLevelHighest = [string]$Task.Principal.RunLevel -eq 'Highest'
+    LogonTriggerUser = @($Task.Triggers | Where-Object { [string]$_.UserId -ieq $ExpectedUser }).Count -gt 0
+    PowerShellAction = @($Task.Actions | Where-Object { [string]$_.Execute -match '(^|\\)powershell\.exe$' }).Count -gt 0
+    ChildSessionAutostart = [string]$Task.Actions.Arguments -match 'childsession-autostart\.ps1'
+    HighestTaskMode = [string]$Task.Actions.Arguments -match '-LaunchMode HighestTask'
+}
+$Checks.GetEnumerator() | Select-Object Name, Value |
+    Format-Table -AutoSize | Tee-Object -FilePath (Join-Path $EvidenceRoot 'scheduled-task-checks.txt')
+$FailedChecks = @($Checks.GetEnumerator() | Where-Object { -not [bool]$_.Value })
+if ($FailedChecks.Count -gt 0) {
+    throw "Scheduled Taskの確認に失敗しました: $($FailedChecks.Name -join ', ')"
+}
 ```
+
+`Out-File`は画面に表示せずファイルだけへ保存します。この手順では`Tee-Object`を使用するため、内容を画面で確認しながら同じ証跡ファイルへ保存できます。最後の表がすべて`True`なら合格です。`False`があれば例外で停止します。
 
 合格条件:
 
