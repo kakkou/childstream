@@ -153,6 +153,11 @@ function Restore-RegistryValueSnapshot {
             if ($null -ne $current.PSObject.Properties[$Snapshot.Name]) { throw '値が残っています。' }
         }
         catch [Management.Automation.ItemNotFoundException] { return }
+        catch [Management.Automation.PSArgumentException] {
+            $key = Get-Item -LiteralPath $Snapshot.Path -ErrorAction Stop
+            if (@($key.GetValueNames()) -notcontains [string]$Snapshot.Name) { return }
+            throw
+        }
         catch {
             if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { return }
             throw
