@@ -53,12 +53,29 @@ Get-Process -Name sunshine -ErrorAction SilentlyContinue |
 ### 2.2 レジストリ、Firewall、タスク、ファイル
 
 ```powershell
-$Before = [ordered]@{
-    fDenyTSConnections = Get-ItemPropertyValue -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -ErrorAction SilentlyContinue
-    DWMFRAMEINTERVAL = Get-ItemPropertyValue -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name DWMFRAMEINTERVAL -ErrorAction SilentlyContinue
-    RemoteDesktop_SuppressWhenMinimized = Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\Microsoft\Terminal Server Client' -Name RemoteDesktop_SuppressWhenMinimized -ErrorAction SilentlyContinue
+function Get-ChildStreamRegistryEvidence {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Name)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return [pscustomobject]@{ Existed = $false; Value = $null; Kind = $null }
+    }
+    $Key = Get-Item -LiteralPath $Path -ErrorAction Stop
+    if (@($Key.GetValueNames()) -notcontains $Name) {
+        return [pscustomobject]@{ Existed = $false; Value = $null; Kind = $null }
+    }
+    [pscustomobject]@{
+        Existed = $true
+        Value = $Key.GetValue($Name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        Kind = [string]$Key.GetValueKind($Name)
+    }
 }
-$Before | ConvertTo-Json | Set-Content (Join-Path $EvidenceRoot 'before-registry.json') -Encoding UTF8
+
+$Before = [ordered]@{
+    fDenyTSConnections = Get-ChildStreamRegistryEvidence -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections
+    DWMFRAMEINTERVAL = Get-ChildStreamRegistryEvidence -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name DWMFRAMEINTERVAL
+    RemoteDesktop_SuppressWhenMinimized = Get-ChildStreamRegistryEvidence -Path 'HKCU:\Software\Microsoft\Terminal Server Client' -Name RemoteDesktop_SuppressWhenMinimized
+}
+$Before | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $EvidenceRoot 'before-registry.json') -Encoding UTF8
 
 Get-NetFirewallRule -PolicyStore PersistentStore -ErrorAction SilentlyContinue |
     Where-Object DisplayName -eq 'ChildStream Sunshine' |
@@ -352,12 +369,29 @@ if (Test-Path '.\display.cfg.verification-backup') {
 ### 10.3 インストール前と比較する
 
 ```powershell
-$After = [ordered]@{
-    fDenyTSConnections = Get-ItemPropertyValue -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -ErrorAction SilentlyContinue
-    DWMFRAMEINTERVAL = Get-ItemPropertyValue -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name DWMFRAMEINTERVAL -ErrorAction SilentlyContinue
-    RemoteDesktop_SuppressWhenMinimized = Get-ItemPropertyValue -LiteralPath 'HKCU:\Software\Microsoft\Terminal Server Client' -Name RemoteDesktop_SuppressWhenMinimized -ErrorAction SilentlyContinue
+function Get-ChildStreamRegistryEvidence {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Name)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return [pscustomobject]@{ Existed = $false; Value = $null; Kind = $null }
+    }
+    $Key = Get-Item -LiteralPath $Path -ErrorAction Stop
+    if (@($Key.GetValueNames()) -notcontains $Name) {
+        return [pscustomobject]@{ Existed = $false; Value = $null; Kind = $null }
+    }
+    [pscustomobject]@{
+        Existed = $true
+        Value = $Key.GetValue($Name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        Kind = [string]$Key.GetValueKind($Name)
+    }
 }
-$After | ConvertTo-Json | Set-Content (Join-Path $EvidenceRoot 'after-registry.json') -Encoding UTF8
+
+$After = [ordered]@{
+    fDenyTSConnections = Get-ChildStreamRegistryEvidence -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections
+    DWMFRAMEINTERVAL = Get-ChildStreamRegistryEvidence -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name DWMFRAMEINTERVAL
+    RemoteDesktop_SuppressWhenMinimized = Get-ChildStreamRegistryEvidence -Path 'HKCU:\Software\Microsoft\Terminal Server Client' -Name RemoteDesktop_SuppressWhenMinimized
+}
+$After | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $EvidenceRoot 'after-registry.json') -Encoding UTF8
 
 Get-NetFirewallRule -PolicyStore PersistentStore -ErrorAction SilentlyContinue |
     Where-Object DisplayName -eq 'ChildStream Sunshine' |
