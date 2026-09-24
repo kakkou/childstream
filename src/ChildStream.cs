@@ -1,4 +1,6 @@
 using System;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -24,8 +26,6 @@ static class Program
 {
     [DllImport("wtsapi32.dll", SetLastError = true)]
     static extern bool WTSEnableChildSessions(bool enable);
-    [DllImport("wtsapi32.dll")]
-    static extern bool WTSIsChildSessionsEnabled(out bool enabled);
 
     static string baseDir = AppDomain.CurrentDomain.BaseDirectory;
     static string logPath = Path.Combine(baseDir, "launcher.log");
@@ -73,21 +73,52 @@ static class Program
             bool ok = WTSEnableChildSessions(true);
             int err = Marshal.GetLastWin32Error();
             bool en1;
-            WTSIsChildSessionsEnabled(out en1);
+            int queryError;
+            if (!ChildSessionNative.TryIsChildSessionsEnabled(out en1, out queryError))
+            {
+                Log("WTSEnableChildSessions(true) => " + ok + " (gle=" + err + "), status query failed (gle=" + queryError + ")");
+                return 1;
+            }
             Log("WTSEnableChildSessions(true) => " + ok + " (gle=" + err + "), enabled now = " + en1);
             return en1 ? 0 : 1;
+        }
+        if (args.Length > 0 && args[0] == "-disable")
+        {
+            bool ok = WTSEnableChildSessions(false);
+            int err = Marshal.GetLastWin32Error();
+            bool en0;
+            int queryError;
+            if (!ChildSessionNative.TryIsChildSessionsEnabled(out en0, out queryError))
+            {
+                Log("WTSEnableChildSessions(false) => " + ok + " (gle=" + err + "), status query failed (gle=" + queryError + ")");
+                return 1;
+            }
+            Log("WTSEnableChildSessions(false) => " + ok + " (gle=" + err + "), enabled now = " + en0);
+            return en0 ? 1 : 0;
         }
         if (args.Length > 0 && args[0] == "-check")
         {
             bool en2;
-            WTSIsChildSessionsEnabled(out en2);
+            int queryError;
+            if (!ChildSessionNative.TryIsChildSessionsEnabled(out en2, out queryError))
+            {
+                Log("child sessions status query failed: Win32 error " + queryError);
+                return 2;
+            }
             Log("child sessions enabled = " + en2);
             return en2 ? 0 : 1;
         }
         if (args.Length > 0 && args[0] == "-resetpass") { try { File.Delete(credPath); } catch { } return 0; }
 
         bool en;
-        WTSIsChildSessionsEnabled(out en);
+        int startupQueryError;
+        if (!ChildSessionNative.TryIsChildSessionsEnabled(out en, out startupQueryError))
+        {
+            string message = "Could not query whether child sessions are enabled. Win32 error " + startupQueryError + ": " + new Win32Exception(startupQueryError).Message;
+            Log(message);
+            MessageBox.Show(message, "ChildStream", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 1;
+        }
         Log("startup: child sessions enabled = " + en);
         if (!en)
         {
@@ -96,6 +127,27 @@ static class Program
         }
 
         Application.EnableVisualStyles();
+
+        string authorizationPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ChildStream", "active-child-session.json");
+        var authorizationRetry = new ChildSessionAuthorizationRetry(TimeSpan.FromSeconds(10));
+        Process launcherProcess = Process.GetCurrentProcess();
+        int launcherProcessId = launcherProcess.Id;
+        DateTime launcherStartTimeUtc = launcherProcess.StartTime.ToUniversalTime();
+        launcherProcess.Dispose();
+        Application.ApplicationExit += (s, e) => { authorizationRetry.OnDisconnected(); ChildSessionAuthorizationStore.Delete(authorizationPath); };
+
+        DisplayConfig displayConfig;
+        try
+        {
+            displayConfig = DisplayConfig.Load(Path.Combine(baseDir, "display.cfg"));
+        }
+        catch (FormatException ex)
+        {
+            MessageBox.Show(ex.Message, "ChildStream", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 1;
+        }
 
         string account = Environment.MachineName + @"\" + Environment.UserName;
         string pw = LoadPassword();
@@ -121,26 +173,17 @@ static class Program
         {
             if (MessageBox.Show("Sign out the child session? All apps running in it will close.", "Child Session", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             endRequested[0] = true;
-            try
+            authorizationRetry.OnDisconnected();
+            ChildSessionAuthorizationStore.Delete(authorizationPath);
+            uint childSessionId;
+            int error;
+            if (!ChildSessionNative.TryLogoffChildSession(out childSessionId, out error))
             {
-                var psi = new System.Diagnostics.ProcessStartInfo("qwinsta") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
-                var proc = System.Diagnostics.Process.Start(psi);
-                string outp = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit();
-                foreach (var line in outp.Split('\n'))
-                {
-                    if (line.Contains(Environment.UserName) && !line.Contains("console"))
-                    {
-                        var m = System.Text.RegularExpressions.Regex.Match(line, @"\s(\d+)\s");
-                        if (m.Success)
-                        {
-                            Log("signing out session " + m.Groups[1].Value);
-                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("logoff", m.Groups[1].Value) { UseShellExecute = false, CreateNoWindow = true });
-                        }
-                    }
-                }
+                string message = "Could not sign out the child session. Win32 error " + error + ": " + new Win32Exception(error).Message;
+                Log("signout: " + message);
+                MessageBox.Show(message, "Child Session", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-            catch (Exception ex) { Log("signout: " + ex.Message); }
+            else Log("signed out child session " + childSessionId);
             var quitTimer = new Timer { Interval = 3000 };
             quitTimer.Tick += delegate { tray.Visible = false; Application.Exit(); };
             quitTimer.Start();
@@ -165,18 +208,7 @@ static class Program
                 ocx.Server = "localhost";
                 ocx.UserName = account;
                 ocx.AdvancedSettings2.ClearTextPassword = pw;
-                int dw = 1920, dh = 1080, scale = 0;
-                try
-                {
-                    string cfg = Path.Combine(baseDir, "display.cfg");
-                    if (File.Exists(cfg))
-                    {
-                        var parts = File.ReadAllText(cfg).Trim().Split('x');
-                        dw = int.Parse(parts[0]); dh = int.Parse(parts[1]);
-                        if (parts.Length > 2) scale = int.Parse(parts[2]);
-                    }
-                }
-                catch (Exception ex) { Log("display.cfg: " + ex.Message); }
+                int dw = displayConfig.Width, dh = displayConfig.Height, scale = displayConfig.Scale;
                 ocx.DesktopWidth = dw;
                 ocx.DesktopHeight = dh;
                 try { ocx.AdvancedSettings2.SmartSizing = true; } catch { }
@@ -214,7 +246,32 @@ static class Program
             try
             {
                 int state = (int)ocx.Connected;
-                if (state != last) { last = state; Log("state -> " + state); f.Text = state == 1 ? "Child Session - connected" : "Child Session - state " + state; }
+                DateTime nowUtc = DateTime.UtcNow;
+                if (state != last)
+                {
+                    last = state;
+                    Log("state -> " + state);
+                    f.Text = state == 1 ? "Child Session - connected" : "Child Session - state " + state;
+                    if (state == 1)
+                        authorizationRetry.OnConnected(nowUtc);
+                    else if (state == 0)
+                    {
+                        authorizationRetry.OnDisconnected();
+                        ChildSessionAuthorizationStore.Delete(authorizationPath);
+                    }
+                }
+                if (state == 1 && !endRequested[0] && authorizationRetry.ShouldAttempt(nowUtc))
+                {
+                    uint childSessionId;
+                    int error;
+                    if (ChildSessionNative.TryGetChildSessionId(out childSessionId, out error))
+                    {
+                        ChildSessionAuthorizationStore.Write(authorizationPath, childSessionId, launcherProcessId, launcherStartTimeUtc, nowUtc);
+                        authorizationRetry.MarkIssued();
+                        Log("authorized child session " + childSessionId);
+                    }
+                    else Log("child session identification failed: Win32 error " + error);
+                }
                 if (state == 0 && wantReconnect && !endRequested[0] && (DateTime.Now - lastAttempt).TotalSeconds > 5)
                 {
                     lastAttempt = DateTime.Now;
@@ -226,12 +283,9 @@ static class Program
         };
         timer.Start();
 
-        f.FormClosing += (s, e) => { wantReconnect = false; tray.Visible = false; };
+        f.FormClosing += (s, e) => { wantReconnect = false; authorizationRetry.OnDisconnected(); ChildSessionAuthorizationStore.Delete(authorizationPath); tray.Visible = false; };
         connect();
         Application.Run(f);
         return 0;
     }
 }
-
-
-
